@@ -1,8 +1,14 @@
 name: secure-pipeline
 on: [push]
+permissions:
+  contents: read
+  packages: write
+  id-token: write
 jobs:
   security:
     runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/sasikalabedre/secure-app:latest
     steps:
       - uses: actions/checkout@v4
       - name: Scan code for secrets
@@ -12,7 +18,17 @@ jobs:
         run: |
           docker run --rm -v $PWD:/src aquasec/trivy:latest config --exit-code 1 /src
       - name: Build image
-        run: docker build -t secure-app .
+        run: docker build -t $IMAGE .
       - name: Scan image for Critical vulnerabilities
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --exit-code 1 secure-app
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --exit-code 1 $IMAGE
+      - name: Log in to GitHub registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Push image
+        run: docker push $IMAGE
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign image
+        run: |
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE)
+          cosign sign --yes $DIGEST
