@@ -1,0 +1,18 @@
+name: secure-pipeline
+on: [push]
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan code for secrets
+        run: |
+          docker run --rm -v $PWD:/src aquasec/trivy:latest fs --scanners secret --exit-code 1 /src
+      - name: Scan Dockerfile for misconfigurations
+        run: |
+          docker run --rm -v $PWD:/src aquasec/trivy:latest config --exit-code 1 /src
+      - name: Build image
+        run: docker build -t secure-app .
+      - name: Scan image for Critical vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --exit-code 1 secure-app
